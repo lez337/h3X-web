@@ -114,10 +114,13 @@ export class H3xAccount {
       if(!Number.isSafeInteger(body.revision)||body.revision!==workspace.revision)return json({error:'Your account was updated in another tab or device. Download a backup of your changes, then reload before editing further.'},409);
       const state=validateState(body.state),data=encoder.encode(JSON.stringify(state)),chunks=Math.ceil(data.length/CHUNK),revision=workspace.revision+1;
       await storage.transaction(async txn=>{
-        const entries={workspace:{revision,chunks}};
-        for(let i=0;i<chunks;i++)entries['state:'+i]=data.slice(i*CHUNK,(i+1)*CHUNK);
-        await txn.put(entries);
-        if(workspace.chunks>chunks)await txn.delete(Array.from({length:workspace.chunks-chunks},(_,i)=>'state:'+(chunks+i)));
+        // Bound multi-key calls as well as individual values, even near the 8 MB limit.
+        for(let start=0;start<chunks;start+=50){
+          const entries={};for(let i=start;i<Math.min(start+50,chunks);i++)entries['state:'+i]=data.slice(i*CHUNK,(i+1)*CHUNK);
+          await txn.put(entries);
+        }
+        await txn.put('workspace',{revision,chunks});
+        for(let start=chunks;start<workspace.chunks;start+=50)await txn.delete(Array.from({length:Math.min(50,workspace.chunks-start)},(_,i)=>'state:'+(start+i)));
       });
       return json({ok:true,revision});
     }

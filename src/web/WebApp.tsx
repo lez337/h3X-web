@@ -36,7 +36,7 @@ function WorkspaceApp(){
     window.addEventListener('h3x-auth-required',expired);window.addEventListener('h3x-sync-status',status);window.addEventListener('beforeunload',beforeUnload);
     return()=>{canceled=true;window.removeEventListener('h3x-auth-required',expired);window.removeEventListener('h3x-sync-status',status);window.removeEventListener('beforeunload',beforeUnload)};
   },[]);
-  async function signIn(loginName:string,loginKey:string){const value=await requestJson('/api/login',{name:loginName,key:loginKey});await openWorkspace(value.account.id);setKey('');setCreated(null);setAccount(value.account)}
+  async function signIn(loginName:string,loginKey:string){const value=await requestJson('/api/login',{name:loginName,key:loginKey});await openWorkspace(value.account.id);setName(value.account.name);setMode('login');setKey('');setCreated(null);setAccount(value.account)}
   async function submit(event:FormEvent){event.preventDefault();setBusy(true);setError('');try{
     if(mode==='create'){const value=await requestJson('/api/accounts',{name});setCreated({name:value.account.name,key:value.key});setSaved(false);setCopied(false)}
     else await signIn(name,key);

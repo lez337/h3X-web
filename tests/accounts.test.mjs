@@ -76,6 +76,18 @@ test('Five wrong keys lock an account across IP addresses, then allow login afte
   const storage=env.H3X_ACCOUNTS.context(accountName(fixtureName).id).storage;await storage.put('attempts',{failed:5,lockedUntil:Date.now()-1});
   assert.equal((await call(env,'/api/login',{body:{name:fixtureName,key:fixtureKey},ip:'192.0.2.81'})).status,200);
 });
+test('Workspaces near 8 MB respect Durable Object multi-key and value-size limits',async()=>{
+  const env=accountEnvironment(),state=blank();state.cases=[{id:'large',title:'Large fixture',notes:'x'.repeat(8*1024*1024-4096),people:[]}];
+  const storage=env.H3X_ACCOUNTS.context(accountName(fixtureName).id).storage,put=storage.put,remove=storage.delete;
+  storage.put=async(key,value)=>{
+    if(typeof key==='object'){assert.ok(Object.keys(key).length<=128);for(const part of Object.values(key))if(part instanceof Uint8Array)assert.ok(part.length<128*1024);}
+    return put(key,value);
+  };
+  storage.delete=async keys=>{if(Array.isArray(keys))assert.ok(keys.length<=128);return remove(keys);};
+  const saved=await call(env,'/api/workspace',{cookie:fixtureCookie,body:{state,revision:0}});assert.equal(saved.status,200);
+  assert.equal((await (await call(env,'/api/workspace',{cookie:fixtureCookie})).json()).state.cases[0].notes.length,state.cases[0].notes.length);
+  assert.equal((await call(env,'/api/workspace',{cookie:fixtureCookie,body:{state:blank(),revision:1}})).status,200);
+});
 test('Registration rate limits and same-origin protection apply before account creation',async()=>{
   const env=accountEnvironment();
   assert.equal((await call(env,'/api/accounts',{body:{name:'Blocked'},headers:{Origin:'https://other.example'}})).status,403);
