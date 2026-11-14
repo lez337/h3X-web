@@ -9,7 +9,8 @@ import geo from '../electron/geocoding.cjs';
 import {getCatalog,selection,checkBatch} from './username.mjs';
 import {createHostedReport,reportRoute,forwardReport} from './reports.mjs';
 export {InvestigationReport} from './reports.mjs';
-import {accountAuth,resolveAccount,accountWorkspace,accountReports,rotateAccountKey} from './accounts.mjs';
+import {accountAuth,resolveAccount,accountWorkspace,accountReports,rotateAccountKey,accountApiKey} from './accounts.mjs';
+import {discordApi} from './discord-api.mjs';
 export {H3xAccount} from './accounts.mjs';
 import {withLinkPreview} from './link-preview.mjs';
 
@@ -76,6 +77,8 @@ export default {
     const path=new URL(request.url).pathname;
     if(!path.startsWith('/api/'))return withLinkPreview(request,await env.ASSETS.fetch(request));
     try{
+      // Dedicated bearer-only endpoint; never accepts browser sessions or workspace RPC.
+      if(path==='/api/v1/discord/search')return await discordApi(request,env,readBody);
       const origin=request.headers.get('origin');
       if(origin&&origin!==new URL(request.url).origin)return json({error:'Origin rejected.'},403);
       if(request.headers.get('sec-fetch-site')==='cross-site')return json({error:'Origin rejected.'},403);
@@ -96,6 +99,13 @@ export default {
       const account=await resolveAccount(request,env);
       if(!account)return json({error:'Sign in to use H3X.'},401);
       if(request.headers.has('X-H3X-Account')&&request.headers.get('X-H3X-Account')!==account.id)return json({error:'The signed-in account changed in another tab. Sign in again.'},401);
+      if(path==='/api/account/api-key'){
+        if(request.method==='GET')return await accountApiKey(env,account,'status');
+        if(request.method!=='POST')return json({error:'Method not allowed.'},405);
+        const body=await readBody(request,1024);
+        if(!['create','revoke'].includes(body.action))return json({error:'Choose create or revoke.'},400);
+        return await accountApiKey(env,account,body.action);
+      }
       if(path==='/api/workspace'){
         if(!['GET','POST'].includes(request.method))return json({error:'Method not allowed.'},405,{'Allow':'GET, POST'});
         return await accountWorkspace(request,env,account,request.method==='POST'?await readBody(request,8*1024*1024+4096):undefined);

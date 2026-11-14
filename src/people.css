@@ -12,7 +12,7 @@
 
 /* Compact people rows expand to their complete supporting details. */
 .people-card{display:grid;grid-template-columns:30px minmax(0,1fr);align-items:start}
-.people-card>.people-select{position:static;justify-self:center;margin-top:26px;padding:0}
+.people-card>input.people-select{position:static;justify-self:center;margin:27px 0 0;padding:0}
 .people-dropdown{min-width:0}
 .people-dropdown>.people-identity{list-style:none;cursor:pointer;padding:10px 10px 10px 0;min-height:68px;box-sizing:border-box;border-radius:11px;gap:8px}
 .people-dropdown>.people-identity::-webkit-details-marker{display:none}
@@ -23,7 +23,7 @@
 .people-dropdown>.people-identity .people-card-meta{gap:5px}
 .people-expand-icon{color:#888;transition:transform .15s;flex-shrink:0}
 .people-dropdown[open]>.people-identity .people-expand-icon{transform:rotate(90deg)}
-.people-card-body{border-top:1px solid #303030;padding:10px 12px 0;min-width:0}
+.people-card-body{border-top:1px solid #303030;padding:10px 12px 0;margin-left:-30px;min-width:0}
 .people-expanded-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#888;font-size:9px}
 .people-expanded-meta .people-match{display:flex;align-items:center;gap:5px}
 .people-expanded-meta .people-match b{font-size:11px}

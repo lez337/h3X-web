@@ -126,6 +126,10 @@ For protected reports, visitors see a code form without needing the workspace ac
 
 This feature uses the `INVESTIGATION_REPORTS` SQLite-backed Durable Object binding and migration in `wrangler.jsonc`. Deploy the updated full Worker configuration with `npm run deploy`; Wrangler provisions the namespace during deployment. No separate database ID or new secret is needed. Retain the migration entry in future deployments. The four-digit code protects a single report, not the rest of the workspace. Report HTML is limited to 4 MB and preserves export field exclusions.
 
+## Account API and Equicord
+
+Account information now includes **Generate API key**, **Replace API key**, and **Revoke API key**. The separate, search-only key has no H3X call quota. Hosting and provider limits still apply. The Equicord desktop plugin adds **Search user on H3X** to user right-click menus and displays matching cards in a popup. Installation and endpoint details are in [plugins/equicord/README.md](plugins/equicord/README.md). Deploy the Worker and install the plugin to use it.
+
 ## Validation and implementation
 
 `npm run build` checks TypeScript, builds the browser application, and bundles the Worker without Electron, filesystem APIs or child processes. `npm test` runs inherited adapter/model/export/scanner tests plus web authentication, request limits, streaming cancellation, client orchestration, session-key clearing and browser file-worker tests with fictional fixtures. It makes no paid or live lookups.

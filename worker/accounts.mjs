@@ -62,6 +62,15 @@ export async function accountReports(env,account,action,report){
 export async function rotateAccountKey(env,account,body){
   return internal(env,account.id,'/rotate-key',{token:account.token,currentKey:body.currentKey});
 }
+export async function accountApiKey(env,account,action){
+  return internal(env,account.id,'/api-key/'+action,{token:account.token});
+}
+export async function resolveApiKey(request,env){
+  const match=/^Bearer (h3x_([a-f0-9]{64})_([a-f0-9]{64}))$/.exec(request.headers.get('authorization')||'');
+  if(!match||!env.H3X_ACCOUNTS)return null;
+  const response=await internal(env,match[2],'/api-key/verify',{key:match[1]});
+  return response.ok?(await response.json()).account:null;
+}
 
 // One object per normalized name provides atomic name reservation and isolated data.
 export class H3xAccount {
@@ -105,9 +114,23 @@ export class H3xAccount {
       await storage.put({account:meta,attempts:{failed:0,lockedUntil:0}});
       return json({authenticated:true,account:{id:meta.id,name:meta.name},token});
     }
+    if(path==='/api-key/verify'){
+      if(!meta?.apiKeyHash||typeof body.key!=='string'||hash(body.key)!==meta.apiKeyHash)return json({error:'Invalid or revoked API key.'},401);
+      return json({account:{id:meta.id,name:meta.name}});
+    }
     const session=meta&&typeof body.token==='string'&&/^[a-f0-9]{64}$/.test(body.token)&&meta.sessions.find(s=>s.hash===hash(body.token)&&s.expires>now);
     if(!session)return json({error:'Sign in to use H3X.'},401);
     if(path==='/session')return json({account:{id:meta.id,name:meta.name}});
+    if(path.startsWith('/api-key/')){
+      if(path==='/api-key/status')return json({enabled:!!meta.apiKeyHash,createdAt:meta.apiKeyCreatedAt||null});
+      if(path==='/api-key/create'){
+        const key=`h3x_${meta.id}_${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex')}`;
+        meta.apiKeyHash=hash(key);meta.apiKeyCreatedAt=now;await storage.put('account',meta);
+        return json({key,enabled:true,createdAt:now});
+      }
+      if(path==='/api-key/revoke'){delete meta.apiKeyHash;delete meta.apiKeyCreatedAt;await storage.put('account',meta);return json({enabled:false});}
+      return json({error:'API key route not found.'},404);
+    }
     if(path==='/logout'){meta.sessions=meta.sessions.filter(s=>s!==session);await storage.put('account',meta);return json({ok:true});}
     if(path==='/rotate-key'){
       if(typeof body.currentKey!=='string'||!/^\d{8}$/.test(body.currentKey))return json({error:'Enter your current 8-digit login code.'},400);
