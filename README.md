@@ -86,7 +86,15 @@ See Cloudflare's [Workers Builds setup](https://developers.cloudflare.com/worker
 | Provider credentials entered in Settings | Memory only for the current page session; cleared by refresh, close or sign-out |
 | Optional provider credentials on the Worker | `OATHNET_API_KEY` or `PROVIDER_<UPPERCASE_CATALOG_ID>` secrets; status returns booleans, never keys |
 
-Sign in with the same account name and 8-digit key on another browser or device to load the saved workspace. Reload before continuing work that was edited elsewhere. Activity logs stay in account-scoped browser storage. The Windows application and Discord bot do not sync with web accounts. Your API requests and provider responses pass through Cloudflare; only the requested provider receives each lookup. Worker observability is disabled by default.
+Sign in with the same account name and 8-digit key on another browser or device to load the saved workspace. Saved changes are checked every 10 seconds while visible and when the app regains focus or connectivity. Clean workspaces receive changes automatically. Unsaved edits and failed saves block background replacement; simultaneous edits still use revision checks to prevent silent overwrites. Activity logs stay in account-scoped browser storage. The original Windows application and Discord bot do not sync with web accounts. Your API requests and provider responses pass through Cloudflare; only the requested provider receives each lookup. Worker observability is disabled by default.
+
+## Connected desktop app
+
+The website can now be installed as a standalone desktop window. In **Settings > Search > Account workspace**, choose **Install H3X on this device**, or use Chrome/Edge's **Install H3X / Install this site as an app** menu. On iOS use **Share > Add to Home Screen**. Installation requires deploying this update over HTTPS first.
+
+The installed app and website use exactly the same frontend and Worker, so deployed feature updates apply to both on the next launch or reload. Investigations, people, evidence, graph links, map pins, shortcuts, search history and workspace settings use the same account storage. An internet connection is required. The service worker deliberately stores no offline app or account data.
+
+This creates a connected desktop option alongside the original Electron app; it does not modify that app or its installer. To transfer an existing desktop workspace, download a backup first, then restore its workspace JSON under Settings > Search. Restoring replaces the target account workspace and requires confirmation. Windows-only Telegram sessions, local executables, automatic filesystem exports, locally encrypted provider credentials and activity logs remain separate. Provider keys entered into the connected app remain session-only; Worker secrets are shared by requests through that Worker.
 
 ## Accounts and saved investigations
 

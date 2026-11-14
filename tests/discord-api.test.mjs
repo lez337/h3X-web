@@ -1,11 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import worker from '../dist/server/index.js';
-import {discordIdentity,lookupDiscord} from '../worker/discord-api.mjs';
+import {discordIdentity,lookupDiscord,providerFailure} from '../worker/discord-api.mjs';
 import {accountEnvironment,fixtureCookie,fixtureName} from './fixtures/account-session.mjs';
 import {accountName} from '../worker/accounts.mjs';
 
 const identity={userId:'123456789012345678',username:'fictional.user'};
+test('Provider diagnostics explain actionable failures without forwarding upstream secrets',async()=>{
+  for(const [status,pattern] of [[401,/API key/],[403,/denied access/],[429,/rate limit/],[404,/not found/],[503,/unavailable/],[400,/configuration/]]){
+    const result=await lookupDiscord(identity,{OATHNET_API_KEY:'private-key'},new AbortController().signal,async()=>{throw Error(`Provider returned HTTP ${status}. private-key`)});
+    assert.ok(result.providerStatus.every(p=>p.httpStatus===status&&pattern.test(p.message)));
+    assert.ok(!JSON.stringify(result).includes('private-key'));
+  }
+  assert.match(providerFailure(new DOMException('sensitive','TimeoutError')).message,/timed out/);
+  assert.match(providerFailure(Error('Unexpected OathNet response: data.items missing.')).message,/unexpected response/);
+  assert.ok(!providerFailure(Error('arbitrary sensitive provider body')).message.includes('sensitive'));
+});
 function call(env,path,body,headers={}){return worker.fetch(new Request('https://h3x.example'+path,{method:body===undefined?'GET':'POST',headers:{'Content-Type':'application/json',...headers},...(body===undefined?{}:{body:JSON.stringify(body)})}),env);}
 test('Account API keys are session-managed, hash-only, scoped, replaceable and revocable',async()=>{
   const env=accountEnvironment(),route='/api/account/api-key',headers={Cookie:fixtureCookie};

@@ -49,3 +49,31 @@ test('A failed initial account load never opens an empty replacement workspace',
   const s=await storage();globalThis.fetch=async()=>Response.json({error:'Unavailable fixture'},{status:503});
   await assert.rejects(()=>s.openWorkspace(id),/Unavailable/);assert.equal(s.accountId(),undefined);await assert.rejects(()=>s.saveWorkspace({}),/Sign in/);
 }));
+
+test('Another device receives saved workspace changes without reloading',()=>setup(async()=>{
+  const a=await storage(),b=await storage();await a.openWorkspace(id);await b.openWorkspace(id);
+  const state=await a.loadWorkspace();state.cases=[{id:'remote',title:'From desktop',people:[]}];state.settings.pageSize=50;
+  await a.saveWorkspace(state);let received;
+  window.addEventListener('h3x-workspace-refreshed',event=>{received=event.detail},{once:true});
+  assert.equal(await b.refreshWorkspace(),true);assert.equal(received.cases[0].title,'From desktop');
+  assert.equal((await b.loadWorkspace()).settings.pageSize,50);assert.equal(await b.refreshWorkspace(),false);
+}));
+
+test('An edit waiting for its debounce blocks background refresh and stays available for backup',()=>setup(async()=>{
+  const a=await storage(),b=await storage();await a.openWorkspace(id);await b.openWorkspace(id);
+  const stateA=await a.loadWorkspace(),stateB=await b.loadWorkspace();
+  stateB.cases=[{id:'draft',title:'Local draft',people:[]}];b.stageWorkspace(stateB);
+  stateA.cases=[{id:'remote',title:'Remote save',people:[]}];await a.saveWorkspace(stateA);
+  assert.equal(await b.refreshWorkspace(),false);assert.equal((await b.loadWorkspace()).cases[0].id,'draft');
+  await assert.rejects(()=>b.saveWorkspace(stateB),/another tab or device/);
+  assert.equal(await b.refreshWorkspace(),false);
+}));
+
+test('An edit made during an in-flight background read cannot be overwritten',()=>setup(async({route})=>{
+  const a=await storage(),b=await storage();await a.openWorkspace(id);await b.openWorkspace(id);
+  const state=await a.loadWorkspace();state.cases=[{id:'remote',people:[]}];await a.saveWorkspace(state);
+  let release;globalThis.fetch=async(...args)=>{const result=await route(...args);await new Promise(resolve=>{release=resolve});return result};
+  const refresh=b.refreshWorkspace();while(!release)await new Promise(resolve=>setImmediate(resolve));
+  const draft=await b.loadWorkspace();draft.cases=[{id:'draft',people:[]}];b.stageWorkspace(draft);release();
+  assert.equal(await refresh,false);assert.equal((await b.loadWorkspace()).cases[0].id,'draft');
+}));

@@ -3,7 +3,8 @@ import SearchQueryControls,{SearchTypeSelector,SearchCommandHelp} from './Search
 import {parseSearchCommands} from './searchCommands';
 import {cardOrder} from './resultCardOrder';
 import CountryBadge from './CountryBadge';
-import {useEffect,useMemo,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState} from 'react';
+import {stageWorkspace} from './web/storage';
 import {LayoutDashboard,Search,FolderOpen,Network,MapPinned,FileSearch,Settings,ExternalLink,Plus,Trash2,Download,ShieldCheck,Bot,Globe,ArrowRight,Activity,Square} from 'lucide-react';
 import MapPanel from './MapPanel';
 import InvestigationMap from './InvestigationMap';
@@ -85,6 +86,8 @@ export default function App(){
  const [shortcutTitle,setShortcutTitle]=useState(''),[shortcutUrl,setShortcutUrl]=useState('');
  useEffect(()=>{window.h3x.load().then(s=>{const settings={...initial.settings,...s.settings,brixField:"auto"};if(!settings.esIdsExclusionAdded){settings.hiddenFields=[...new Set([...(settings.hiddenFields||[]),'es_ids'])];settings.esIdsExclusionAdded=true}setState({...s,settings});if(s.settings?.rememberProviders!==false&&Array.isArray(s.settings?.selectedProviders))setProviders(validProviders(s.settings.selectedProviders));setReady(true)}).catch(e=>setNotice(err(e)));window.h3x.credentials().then(s=>setCredential(s.oathnet)).catch(e=>setNotice(err(e)))},[]);
  useEffect(()=>{if(!ready)return;const save=()=>window.h3x.save(state);const timer=setTimeout(()=>save().catch(e=>setNotice('Save failed: '+err(e))),350);const flush=(event:Event)=>{clearTimeout(timer);(event as CustomEvent<Promise<unknown>[]>).detail.push(save())};window.addEventListener('h3x-save-now',flush);return()=>{clearTimeout(timer);window.removeEventListener('h3x-save-now',flush)}},[state,ready]);
+ useLayoutEffect(()=>{if(ready)stageWorkspace(state)},[state,ready]);
+ useEffect(()=>{const refreshed=(event:Event)=>{const next=(event as CustomEvent<State>).detail;setState(next);if(next.settings.rememberProviders!==false&&Array.isArray(next.settings.selectedProviders))setProviders(validProviders(next.settings.selectedProviders))};window.addEventListener('h3x-workspace-refreshed',refreshed);return()=>window.removeEventListener('h3x-workspace-refreshed',refreshed)},[]);
  const update=(patch:Partial<State>)=>setState(s=>({...s,...patch}));const setting=(key:string,value:any)=>setState(s=>({...s,settings:{...s.settings,[key]:value}}));
  const commandSearch=useMemo(()=>parseSearchCommands(query,state.settings,searchQueryType),[query,state.settings,searchQueryType]);
  const hasFilterQuery=providers.some(p=>['oathnet','brixhub'].includes(p)&&Object.values(commandSearch.settings[p==='oathnet'?'oathFilters':'brixFilters']||{}).some(v=>Array.isArray(v)?v.length:typeof v==='object'&&v?Object.keys(v).length:!!String(v||'').trim()));

@@ -2,7 +2,8 @@ import {useEffect,useState,type FormEvent} from 'react';
 import {LockKeyhole,ArrowRight,Download,Upload,Cloud,UserRound,Copy,Check} from 'lucide-react';
 import App from '../App';
 import {clearSessionKeys,requestJson} from './bridge';
-import {loadWorkspace,saveWorkspace,openWorkspace,closeWorkspace,legacyWorkspace,syncStatus,accountId,type SyncStatus} from './storage';
+import {loadWorkspace,saveWorkspace,openWorkspace,closeWorkspace,legacyWorkspace,syncStatus,accountId,refreshWorkspace,type SyncStatus} from './storage';
+import InstallApp from './InstallApp';
 import {download,pickFiles} from './files';
 import {validateState} from './state.mjs';
 import ReportShareDialog from './ReportShareDialog';
@@ -24,9 +25,15 @@ export function WebWorkspace(){
   async function importBrowser(){try{
     const state=await legacyWorkspace();if(!state){setMessage('No previous browser workspace was found on this device.');return;}await replace(state);
   }catch(error){setMessage((error as Error).message)}}
-  return <section className="panel web-workspace"><div className="eyebrow">H3X V2 WEB</div><h2>Account workspace</h2><p>Investigations, graph, pins, settings and search history save automatically to your account. Sign in with the same name and 8-digit key on another device to reopen them. Reload to see changes made on another device.</p><p>Provider keys stay in memory until you sign out, close or refresh this page. Activity logs stay in this browser, separately for each account.</p><div className="button-row"><button onClick={backup}><Download size={15}/>Download backup</button><button onClick={restore}><Upload size={15}/>Restore backup</button><button onClick={importBrowser}>Import previous browser workspace</button></div>{message&&<p role="status">{message}</p>}</section>;
+  return <section className="panel web-workspace"><div className="eyebrow">H3X V2 WEB</div><h2>Account workspace</h2><p>Investigations, graph, pins, settings and search history save automatically to your account. Sign in with the same name and 8-digit key on another device to reopen them. Changes from another device appear automatically while this workspace has no unsaved edits.</p><p>Provider keys stay in memory until you sign out, close or refresh this page. Activity logs stay in this browser, separately for each account.</p><InstallApp/><div className="button-row"><button onClick={backup}><Download size={15}/>Download backup</button><button onClick={restore}><Upload size={15}/>Restore backup</button><button onClick={importBrowser}>Import previous browser workspace</button></div>{message&&<p role="status">{message}</p>}</section>;
 }
 function WorkspaceApp(){
+  useEffect(()=>{
+    let running=false;
+    const refresh=async()=>{if(running||document.visibilityState==='hidden')return;running=true;try{await refreshWorkspace()}catch{/* Saving remains authoritative; retry on the next poll. */}finally{running=false}};
+    const timer=setInterval(refresh,10000);window.addEventListener('focus',refresh);window.addEventListener('online',refresh);document.addEventListener('visibilitychange',refresh);
+    return()=>{clearInterval(timer);window.removeEventListener('focus',refresh);window.removeEventListener('online',refresh);document.removeEventListener('visibilitychange',refresh)};
+  },[]);
   const [showReports,setShowReports]=useState(false);
   const [ready,setReady]=useState(false),[account,setAccount]=useState<{id:string;name:string}|null>(null),[name,setName]=useState(''),[key,setKey]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
   const [mode,setMode]=useState<'login'|'create'>('login'),[created,setCreated]=useState<{name:string;key:string}|null>(null),[saved,setSaved]=useState(false),[copied,setCopied]=useState(false),[sync,setSync]=useState<SyncStatus>(syncStatus);

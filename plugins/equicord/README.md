@@ -2,7 +2,7 @@
 
 1. Deploy the updated H3X Worker (`npm run deploy` in the H3X project, or push through your Cloudflare build setup).
 2. Sign into H3X, click your account at bottom left, and choose **Generate API key** in Account information. Copy it before closing. This is separate from your eight-digit login code.
-3. Copy the entire `h3xSearch` folder into your Equicord source checkout at `src/userplugins/h3xSearch` (both `index.tsx` and `native.ts`).
+3. Copy the entire `h3xSearch` folder into your Equicord source checkout at `src/userplugins/h3xSearch` (all four files: `index.tsx`, `native.ts`, `presentation.ts`, and `style.css`).
 4. In the Equicord checkout run `pnpm build`, then fully quit and restart Discord. Enable **H3XSearch** in Equicord Plugins.
 5. Open H3XSearch settings. Set **siteUrl** to your H3X HTTPS website URL, and **apiKey** to the copied key.
 6. Right-click a user and choose **Search user on H3X**, directly under **Copy User ID**. The popup lets you choose **Also search usernames of linked accounts on this Discord profile**. Leave it unchecked to search only the Discord ID and username. When checked, it loads the selected profile's visible linked accounts and previews their names. Press **Search on H3X** to start; closing this window does not run an H3X search.
@@ -37,10 +37,18 @@ Headers: `Authorization: Bearer <H3X API key>` and `Content-Type: application/js
 
 Keep `userId` a string to preserve precision. The JSON response includes `items` (cards with `source`, `fields`, `matchedBy`, `matchNote`), `providerStatus`, `notice`, and `quota`. Provider errors can return HTTP 200 with partial or empty results; inspect `providerStatus`. Authentication failures return 401, invalid inputs 400. Only this endpoint accepts the integration key. Browser CORS is intentionally not enabled; the desktop plugin uses a bounded native request instead.
 
-Optional request property `connectedUsernames` accepts up to 10 strings, each 1-100 characters without control characters. Omit it or send an empty array for the standard search. These names come from the plugin's selected public profile; the API treats them as user-supplied search terms. Connected-name cards include `matchedBy: "connected"` and `matchedQuery`. Update both plugin files and redeploy the Worker to use this option.
+Optional request property `connectedUsernames` accepts up to 10 strings, each 1-100 characters without control characters. Omit it or send an empty array for the standard search. These names come from the plugin's selected public profile; the API treats them as user-supplied search terms. Connected-name cards include `matchedBy: "connected"` and `matchedQuery`. Update the entire plugin folder and redeploy the Worker to use this option.
 
 Account management uses session-authenticated `GET /api/account/api-key` for status and `POST /api/account/api-key` with `{"action":"create"}` or `{"action":"revoke"}`. Create returns the plaintext key once, and replaces any existing integration key.
 
 Official Equicord references: [custom plugins](https://docs.equicord.org/installing/custom-plugin/), [plugin API](https://docs.equicord.org/plugins/common/), [native helpers](https://docs.equicord.org/plugins/native/).
 
 H3X tests cover API authentication and lookups using fictional fixtures. The plugin must still be built and smoke-tested inside your Equicord installation.
+
+## Cards and provider diagnostics
+
+Cards highlight the record name and source, with separate Identity, Contact, and Location sections. Nested records appear as labeled fields instead of raw JSON. Technical fields are collapsed under More details; credential and redacted fields are hidden. Long values and records are bounded for display.
+
+Failed sources expand automatically with an HTTP status where available and guidance for authentication (401), access restrictions (403), rate limits (429), outages, or timeouts. A failed request is distinct from a successful search with zero matches. Retry search repeats all selected searches. Change search returns to the linked-account choice.
+
+These diagnostics require redeploying the Worker as well as updating the whole plugin folder and rebuilding Equicord. An OathNet 401 concerns the server's OATHNET_API_KEY secret; an H3X endpoint 401 concerns the integration key in plugin settings. A 403 may require checking the provider subscription or server access; the popup cannot change provider permissions.

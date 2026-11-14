@@ -6,3 +6,6 @@ import './dashboard.css';
 import './interaction-effects.css';
 import './web/web.css';
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
+if('serviceWorker' in navigator&&import.meta.env.PROD){
+  navigator.serviceWorker.register('/sw.js',{updateViaCache:'none'}).catch(()=>{/* Browser installation remains optional. */});
+}

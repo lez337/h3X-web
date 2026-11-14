@@ -1,0 +1,15 @@
+{
+  "id": "/",
+  "name": "H3X Investigation Workspace",
+  "short_name": "H3X",
+  "description": "Your H3X investigations, features and settings on desktop and web.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050506",
+  "theme_color": "#050506",
+  "icons": [
+    {"src":"/app-icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},
+    {"src":"/app-icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"}
+  ]
+}

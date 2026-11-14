@@ -3,6 +3,21 @@ import profiles from '../electron/oath-profiles.cjs';
 import {resolveApiKey} from './accounts.mjs';
 
 const json=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store, private','X-Content-Type-Options':'nosniff'}});
+// Return actionable diagnostics without forwarding provider bodies or credentials.
+export function providerFailure(error){
+  const message=String(error?.message||'');
+  const status=Number(message.match(/\bHTTP (\d{3})\b/i)?.[1]);
+  if(status===401)return {httpStatus:status,message:'Provider rejected its API key. Check the OATHNET_API_KEY Worker secret for OathNet.'};
+  if(status===403)return {httpStatus:status,message:'Provider denied access. Check the provider subscription, endpoint permissions, or server access restrictions.'};
+  if(status===429)return {httpStatus:status,message:'Provider rate limit reached. Wait before retrying; check the provider plan limits.'};
+  if(status===404)return {httpStatus:status,message:'Provider endpoint was not found. Check the deployed provider adapter.'};
+  if(status>=500)return {httpStatus:status,message:'Provider service is unavailable. Try again later.'};
+  if(status)return {httpStatus:status,message:'Provider rejected the request. Check the provider configuration.'};
+  if(['TimeoutError','AbortError'].includes(error?.name))return {message:'Search timed out or was cancelled. Retry with fewer linked accounts.'};
+  if(/non-JSON|invalid response|Unexpected .*response/i.test(message))return {message:'Provider returned an unexpected response. Check provider availability and the deployed adapter.'};
+  if(/rejected|api access/i.test(message))return {message:'Provider rejected the search. Check its API key and subscription access.'};
+  return {message:'Could not complete this provider request. Check provider availability and Worker configuration.'};
+}
 export function discordIdentity(body){
   if(typeof body?.userId!=='string'||!/^\d{14,20}$/.test(body.userId))throw Error('A Discord user ID must be a string of 14-20 digits.');
   if(typeof body.username!=='string'||!/^\S{2,32}$/.test(body.username)||/[\x00-\x1f\x7f]/.test(body.username))throw Error('Enter a Discord username of 2-32 characters.');
@@ -34,7 +49,7 @@ export async function lookupDiscord(identity,env,signal,lookup=async task=>{
   const items=[],seen=new Set(),providerStatus=[];
   outcomes.forEach((result,index)=>{
     const task=tasks[index],label=task.kind==='connected'?`connected (${task.query})`:task.kind,source=task.kind==='profile'?'OathNet Discord':task.provider==='oathnet'?`OathNet ${task.family} ${label}`:'BrixHub '+label;
-    providerStatus.push({source,status:result.status==='fulfilled'?'complete':'error',count:result.status==='fulfilled'?result.value.items.length:0});
+    providerStatus.push({source,status:result.status==='fulfilled'?'complete':'error',count:result.status==='fulfilled'?result.value.items.length:0,...result.status==='rejected'?providerFailure(result.reason):{}});
     if(result.status==='fulfilled')for(const item of result.value.items){
       const fields=providers.mask(item.fields),signature=JSON.stringify([item.source,fields]);
       if(seen.has(signature))continue;seen.add(signature);
