@@ -1,5 +1,6 @@
 import {randomInt,timingSafeEqual,createHash} from 'node:crypto';
 import exporter from '../electron/investigation-html.cjs';
+import {accountReports} from './accounts.mjs';
 
 const encoder=new TextEncoder();
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -17,18 +18,21 @@ function namespace(env,id){
   if(!env.INVESTIGATION_REPORTS)throw Error('Hosted reports are not configured. Deploy the updated Cloudflare configuration first.');
   return env.INVESTIGATION_REPORTS.get(env.INVESTIGATION_REPORTS.idFromName(id));
 }
-export async function createHostedReport(payload,env,origin,ownerId){
+export async function createHostedReport(payload,env,origin,account){
   if(!payload?.record||typeof payload.record!=='object'||Array.isArray(payload.record)||!Array.isArray(payload.record.people||[]))return json({error:'Choose an investigation to export.'},400);
   if(payload.excluded!=null&&(!Array.isArray(payload.excluded)||payload.excluded.some(value=>typeof value!=='string')))return json({error:'Invalid export exclusions.'},400);
   // Generate trusted HTML on the server; clients cannot publish arbitrary scripts.
   const html=exporter.htmlReport(payload.record,payload.excluded,payload.settings||{});
   if(encoder.encode(html).length>MAX_HTML)return json({error:'The HTML report exceeds the 4 MB sharing limit.'},413);
   const id=crypto.randomUUID(),stub=namespace(env,id);
-  const response=await stub.fetch(new Request('https://report.internal/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,html,ownerId})}));
+  const response=await stub.fetch(new Request('https://report.internal/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,html,ownerId:account.id})}));
   if(!response.ok)return response;
-  const created=await response.json();return json({...created,url:new URL('/reports/'+id,origin).href},201);
+  const created=await response.json();
+  const indexed=await accountReports(env,account,'add',{id,title:String(payload.record.title||'Untitled investigation').slice(0,200),createdAt:new Date().toISOString()});
+  if(!indexed.ok)return indexed;
+  return json({...created,url:new URL('/reports/'+id,origin).href},201);
 }
-export function reportRoute(path){const match=path.match(/^\/api\/reports\/([^/]+)\/(activate|discard|unlock|content|lock|access)$/);return match&&UUID.test(match[1])?{id:match[1],action:match[2]}:null;}
+export function reportRoute(path){const match=path.match(/^\/api\/reports\/([^/]+)\/(activate|discard|delete|unlock|content|lock|access)$/);return match&&UUID.test(match[1])?{id:match[1],action:match[2]}:null;}
 export async function forwardReport(request,env,route,payload,ownerId){
   const target=new URL(request.url);target.pathname='/'+route.action;target.search='';
   const headers=new Headers();
@@ -62,6 +66,10 @@ export class InvestigationReport {
       return json({id,code,active:false},201);
     }
     if(!meta||(!meta.active&&Date.now()>=meta.pendingUntil))return json({error:'This report is unavailable.'},404);
+    if(path==='/delete'&&request.method==='POST'){
+      if(!meta.ownerId||request.headers.get('X-H3X-Report-Owner')!==meta.ownerId)return json({error:'Only the report creator can delete this link.'},403);
+      await storage.deleteAlarm();await storage.deleteAll();return json({deleted:true});
+    }
     if(['/activate','/discard'].includes(path)&&meta.ownerId&&request.headers.get('X-H3X-Report-Owner')!==meta.ownerId)return json({error:'Only the report creator can activate or discard this link.'},403);
     if(path==='/activate'&&request.method==='POST'){
       const payload=await request.json();

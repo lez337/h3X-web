@@ -56,6 +56,12 @@ export async function accountAuth(request,env,path,body){
 export async function accountWorkspace(request,env,account,body){
   return internal(env,account.id,request.method==='GET'?'/load':'/save',{token:account.token,...request.method==='GET'?{}:{state:body.state,revision:body.revision}});
 }
+export async function accountReports(env,account,action,report){
+  return internal(env,account.id,'/reports/'+action,{token:account.token,report});
+}
+export async function rotateAccountKey(env,account,body){
+  return internal(env,account.id,'/rotate-key',{token:account.token,currentKey:body.currentKey});
+}
 
 // One object per normalized name provides atomic name reservation and isolated data.
 export class H3xAccount {
@@ -103,6 +109,30 @@ export class H3xAccount {
     if(!session)return json({error:'Sign in to use H3X.'},401);
     if(path==='/session')return json({account:{id:meta.id,name:meta.name}});
     if(path==='/logout'){meta.sessions=meta.sessions.filter(s=>s!==session);await storage.put('account',meta);return json({ok:true});}
+    if(path==='/rotate-key'){
+      if(typeof body.currentKey!=='string'||!/^\d{8}$/.test(body.currentKey))return json({error:'Enter your current 8-digit login code.'},400);
+      let attempts=await storage.get('attempts')||{failed:0,lockedUntil:0};
+      if(attempts.lockedUntil>now)return json({error:'Too many incorrect keys. Try again in 15 minutes.'},429);
+      if(attempts.lockedUntil)attempts={failed:0,lockedUntil:0};
+      const candidate=await keyHash(body.currentKey,meta.salt);
+      if(!timingSafeEqual(Buffer.from(candidate,'hex'),Buffer.from(meta.keyHash,'hex'))){
+        attempts.failed++;if(attempts.failed>=5)attempts.lockedUntil=now+LOCK_MS;
+        await storage.put('attempts',attempts);return json({error:'The current login code is incorrect.'},400);
+      }
+      let key;do{key=generateAccountKey()}while(key===body.currentKey);
+      const salt=Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString('hex');
+      meta={...meta,salt,keyHash:await keyHash(key,salt),sessions:[session]};
+      await storage.put({account:meta,attempts:{failed:0,lockedUntil:0}});
+      return json({key});
+    }
+    if(path.startsWith('/reports/')){
+      let reports=await storage.get('reports')||[];
+      if(path==='/reports/list')return json({reports});
+      if(path==='/reports/add')reports=[body.report,...reports.filter(report=>report.id!==body.report.id)];
+      else if(path==='/reports/remove')reports=reports.filter(report=>report.id!==body.report.id);
+      else return json({error:'Report route not found.'},404);
+      await storage.put('reports',reports);return json({ok:true});
+    }
     const workspace=await storage.get('workspace')||{revision:0,chunks:0};
     if(path==='/load'){
       if(!workspace.chunks)return json({state:blank(),revision:0});

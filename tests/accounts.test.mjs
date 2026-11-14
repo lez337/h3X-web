@@ -36,6 +36,32 @@ test('Names and keys are validated on the server',async()=>{
   for(const key of [12345678,'1234567','123456789','abcdefgh',null])assert.equal((await call(env,'/api/login',{body:{name:'Investigator',key}})).status,400);
   assert.equal(accountName('  Investigator ').id,accountName('investigator').id);
 });
+
+test('Rotating a login key requires the current key, revokes other sessions and preserves the workspace',async()=>{
+  const env=accountEnvironment(),created=await create(env),cookie=await login(env,created),other=await login(env,created),state=blank();
+  state.cases=[{id:'keep',title:'Keep this investigation',people:[]}];
+  assert.equal((await call(env,'/api/workspace',{cookie,body:{state,revision:0}})).status,200);
+  assert.equal((await call(env,'/api/account/key',{body:{currentKey:created.key}})).status,401);
+  const wrong=created.key==='00000000'?'11111111':'00000000';
+  assert.equal((await call(env,'/api/account/key',{cookie,body:{currentKey:wrong}})).status,400);
+  assert.equal((await call(env,'/api/account/key',{cookie,body:{currentKey:12345678}})).status,400);
+  assert.equal((await call(env,'/api/account/key',{cookie,method:'GET'})).status,405);
+  assert.equal((await call(env,'/api/account/key',{cookie,body:{currentKey:created.key},headers:{'X-H3X-Account':'different'}})).status,401);
+  const rotated=await call(env,'/api/account/key',{cookie,body:{currentKey:created.key}});assert.equal(rotated.status,200);
+  const {key}=await rotated.json();assert.match(key,/^\d{8}$/);assert.notEqual(key,created.key);
+  assert.equal((await call(env,'/api/workspace',{cookie:other})).status,401);
+  assert.deepEqual((await (await call(env,'/api/workspace',{cookie})).json()).state.cases,state.cases);
+  assert.equal((await call(env,'/api/login',{body:{name:created.account.name,key:created.key}})).status,401);
+  const next=await login(env,{...created,key});
+  assert.deepEqual((await (await call(env,'/api/workspace',{cookie:next})).json()).state.cases,state.cases);
+  const meta=await env.H3X_ACCOUNTS.context(created.account.id).storage.get('account');assert.equal(meta.key,undefined);
+});
+
+test('Incorrect current codes are rate limited before key rotation',async()=>{
+  const env=accountEnvironment();
+  for(let i=0;i<5;i++)assert.equal((await call(env,'/api/account/key',{cookie:fixtureCookie,body:{currentKey:'00000000'}})).status,400);
+  assert.equal((await call(env,'/api/account/key',{cookie:fixtureCookie,body:{currentKey:fixtureKey}})).status,429);
+});
 test('Investigations persist across login sessions, Worker requests, and logout',async()=>{
   const env=accountEnvironment(),created=await create(env),cookie=await login(env,created),state=blank();
   state.cases=[{id:'synthetic',title:'Saved investigation',people:[]}];

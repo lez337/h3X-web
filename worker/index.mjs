@@ -9,8 +9,9 @@ import geo from '../electron/geocoding.cjs';
 import {getCatalog,selection,checkBatch} from './username.mjs';
 import {createHostedReport,reportRoute,forwardReport} from './reports.mjs';
 export {InvestigationReport} from './reports.mjs';
-import {accountAuth,resolveAccount,accountWorkspace} from './accounts.mjs';
+import {accountAuth,resolveAccount,accountWorkspace,accountReports,rotateAccountKey} from './accounts.mjs';
 export {H3xAccount} from './accounts.mjs';
+import {withLinkPreview} from './link-preview.mjs';
 
 const encoder=new TextEncoder();
 const credentials=['oathnet',...freeProviders.catalog.filter(p=>p.credential).map(p=>p.id)];
@@ -73,7 +74,7 @@ export function searchProvider(keys,signal,free=freeProviders.createFreeProvider
 export default {
   async fetch(request,env){
     const path=new URL(request.url).pathname;
-    if(!path.startsWith('/api/'))return env.ASSETS.fetch(request);
+    if(!path.startsWith('/api/'))return withLinkPreview(request,await env.ASSETS.fetch(request));
     try{
       const origin=request.headers.get('origin');
       if(origin&&origin!==new URL(request.url).origin)return json({error:'Origin rejected.'},403);
@@ -99,9 +100,20 @@ export default {
         if(!['GET','POST'].includes(request.method))return json({error:'Method not allowed.'},405,{'Allow':'GET, POST'});
         return await accountWorkspace(request,env,account,request.method==='POST'?await readBody(request,8*1024*1024+4096):undefined);
       }
+      if(path==='/api/reports'&&request.method==='GET')return await accountReports(env,account,'list');
       if(request.method!=='POST')return json({error:'Method not allowed.'},405,{'Allow':'POST'});
-      if(path==='/api/reports')return await createHostedReport(await readBody(request,8*1024*1024),env,new URL(request.url).origin,account.id);
-      if(shared&&['activate','discard'].includes(shared.action))return await forwardReport(request,env,shared,await readBody(request,1024),account.id);
+      if(path==='/api/account/key')return await rotateAccountKey(env,account,await readBody(request,4096));
+      if(path==='/api/reports')return await createHostedReport(await readBody(request,8*1024*1024),env,new URL(request.url).origin,account);
+      if(shared&&['delete','discard'].includes(shared.action)){
+        const response=await forwardReport(request,env,shared,await readBody(request,1024),account.id);
+        if(response.ok||response.status===404){
+          const removed=await accountReports(env,account,'remove',{id:shared.id});
+          if(!removed.ok)return removed;
+          if(response.status===404)return json({deleted:true});
+        }
+        return response;
+      }
+      if(shared&&shared.action==='activate')return await forwardReport(request,env,shared,await readBody(request,1024),account.id);
       if(path!=='/api/rpc')return json({error:'API route not found.'},404);
       const payload=await readBody(request),keys=userKeys(payload,env),p=payload.payload||{};
       switch(payload.action){

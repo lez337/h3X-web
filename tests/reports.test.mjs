@@ -139,3 +139,45 @@ test('Another signed-in account cannot publish or discard the creator\'s pending
   assert.equal((await call(env,`/api/reports/${report.id}/access`,{method:'GET'})).status,404);
   assert.equal((await call(env,`/api/reports/${report.id}/activate`,{owner:true,body:{access:'public'}})).status,200);
 });
+
+test('Creators can list their HTML exports without exposing codes or HTML',async()=>{
+  const env=environment(),report=await create(env);
+  assert.equal((await call(env,'/api/reports',{method:'GET'})).status,401);
+  const response=await call(env,'/api/reports',{method:'GET',owner:true});
+  assert.equal(response.status,200);
+  const {reports}=await response.json();assert.equal(reports.length,1);
+  assert.deepEqual(Object.keys(reports[0]).sort(),['createdAt','id','title']);
+  assert.equal(reports[0].id,report.id);assert.equal(reports[0].title,record.title);
+  assert.equal((await call(env,`/api/reports/${report.id}/discard`,{owner:true})).status,200);
+  assert.deepEqual(await (await call(env,'/api/reports',{method:'GET',owner:true})).json(),{reports:[]});
+});
+
+test('Deleting public and protected HTML exports erases content and revokes existing viewer sessions',async()=>{
+  for(const access of ['public','protected']){
+    const env=environment(),report=await create(env);
+    await call(env,`/api/reports/${report.id}/activate`,{owner:true,body:{access,savedKey:true}});
+    const unlocked=await unlock(env,report),cookie=unlocked.headers.get('set-cookie')?.split(';')[0];
+    assert.equal((await call(env,`/api/reports/${report.id}/delete`,{owner:true})).status,200);
+    assert.equal(env.INVESTIGATION_REPORTS.states.get(report.id).data.size,0);
+    for(const action of ['access','content'])assert.equal((await call(env,`/api/reports/${report.id}/${action}`,{method:'GET',cookie})).status,404);
+    assert.equal((await unlock(env,report)).status,404);
+    assert.deepEqual(await (await call(env,'/api/reports',{method:'GET',owner:true})).json(),{reports:[]});
+    assert.equal((await call(env,`/api/reports/${report.id}/delete`,{owner:true})).status,200);
+  }
+});
+
+test('Deleting an HTML link requires the creator account, including for older unlisted links',async()=>{
+  const env=environment(),report=await create(env),otherId='c'.repeat(64);
+  env.H3X_ACCOUNTS.context(otherId).data.set('account',{id:otherId,name:'OtherOwner',sessions:[{hash:createHash('sha256').update(ownerToken).digest('hex'),expires:Date.now()+3600000}]});
+  const cookie=`h3x_account=${otherId}.${ownerToken}`;
+  await activate(env,report);
+  assert.deepEqual(await (await call(env,'/api/reports',{method:'GET',cookie})).json(),{reports:[]});
+  assert.equal((await call(env,`/api/reports/${report.id}/delete`)).status,401);
+  assert.equal((await call(env,`/api/reports/${report.id}/delete`,{cookie})).status,403);
+  assert.equal((await call(env,`/api/reports/${report.id}/delete`,{owner:true,origin:'https://untrusted.example'})).status,403);
+  assert.equal((await call(env,`/api/reports/${report.id}/delete`,{owner:true,method:'GET'})).status,405);
+  assert.equal((await call(env,`/api/reports/${report.id}/access`,{method:'GET'})).status,200);
+  // Existing reports retain ownership even if no account index entry exists.
+  env.H3X_ACCOUNTS.context(ownerId).data.delete('reports');
+  assert.equal((await call(env,`/api/reports/${report.id}/delete`,{owner:true})).status,200);
+});
