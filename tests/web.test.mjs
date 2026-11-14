@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import worker,{sessionToken,authenticated,readBody,streamOperation} from '../dist/server/index.js';
+import worker,{readBody,streamOperation} from '../dist/server/index.js';
+import {resolveAccount} from '../worker/accounts.mjs';
+import {accountEnvironment,fixtureCookie,fixtureName,fixtureKey} from './fixtures/account-session.mjs';
 import {blank,validateState} from '../src/web/state.mjs';
 import {scanner,investigation,exporter} from '../src/web/shared.js';
 
-const secret='test-only-h3x-key-at-least-24-characters';
-const env={H3X_ACCESS_KEY:secret,ASSETS:{fetch:()=>new Response('H3X')}};
-const cookie=async()=>`h3x_session=${await sessionToken(secret)}`;
+const env=accountEnvironment();
+const cookie=async()=>fixtureCookie;
 async function api(action,payload={},extra={}){return worker.fetch(new Request('https://h3x.example/api/rpc',{method:'POST',headers:{'Content-Type':'application/json',Cookie:await cookie(),...extra.headers},body:JSON.stringify({action,payload,...extra.body})}),{...env,...extra.env});}
 
 test('Workspace validation preserves investigations and rejects malformed or oversized imports',()=>{
@@ -28,25 +29,27 @@ test('Browser report exports escape markup and honor secret exclusions',()=>{
   assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('never-export-this'));
   assert.match(investigation.textReport(record,investigation.defaults,{}),/Synthetic Person/);
 });
-test('API fails closed when no access key is configured',async()=>{
+test('API fails closed when accounts are not configured',async()=>{
   const response=await worker.fetch(new Request('https://h3x.example/api/session'),{});
   assert.equal(response.status,503);
   assert.equal((await response.json()).configured,false);
 });
 test('Login validates the key and sets an expiring HttpOnly SameSite cookie',async()=>{
-  const request=key=>new Request('https://h3x.example/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key})});
-  assert.equal((await worker.fetch(request('incorrect'),env)).status,401);
-  const response=await worker.fetch(request(secret),env);assert.equal(response.status,200);
+  const request=key=>new Request('https://h3x.example/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:fixtureName,key})});
+  assert.equal((await worker.fetch(request('00000000'),env)).status,401);
+  const response=await worker.fetch(request(fixtureKey),env);assert.equal(response.status,200);
   const value=response.headers.get('set-cookie');
   for(const flag of ['HttpOnly','SameSite=Strict','Secure','Max-Age=28800','Path=/api'])assert.ok(value.includes(flag));
-  assert.ok(!value.includes(secret));
-  assert.equal(await authenticated(new Request('https://h3x.example',{headers:{Cookie:value.split(';')[0]}}),secret),true);
+  assert.ok(!value.includes(fixtureKey));
+  assert.equal((await resolveAccount(new Request('https://h3x.example',{headers:{Cookie:value.split(';')[0]}}),env)).name,fixtureName);
 });
-test('Forged, expired and rotated sessions cannot authorize an API request',async()=>{
-  for(const value of ['h3x_session=forged',`h3x_session=${await sessionToken(secret,Date.now()-1000)}`,`h3x_session=${await sessionToken('different-secret-at-least-24-characters')}`]){
+test('Forged and expired account sessions cannot authorize an API request',async()=>{
+  for(const value of ['h3x_account=forged',`h3x_account=${'c'.repeat(64)}.${'b'.repeat(64)}`]){
     const response=await worker.fetch(new Request('https://h3x.example/api/rpc',{method:'POST',headers:{Cookie:value}}),env);
     assert.equal(response.status,401);
   }
+  const expired=await worker.fetch(new Request('https://h3x.example/api/rpc',{method:'POST',headers:{Cookie:fixtureCookie}}),accountEnvironment({expired:true}));
+  assert.equal(expired.status,401);
 });
 test('Cross-origin calls and non-JSON RPC payloads are rejected',async()=>{
   assert.equal((await api('credentials',{}, {headers:{Origin:'https://untrusted.example'}})).status,403);

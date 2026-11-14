@@ -31,7 +31,7 @@ test('Browser ZIP worker bounds decompression rather than trusting compressed si
 });
 
 const bridgeCode=(await build({entryPoints:['src/web/bridge.ts'],bundle:true,format:'esm',platform:'browser',write:false,plugins:[{
-  name:'test-local-storage',setup(b){b.onResolve({filter:/^\.\/storage$/},()=>({path:'storage',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:`export const loadWorkspace=async()=>({settings:{}}), saveWorkspace=async()=>true,read=async()=>[],log=async()=>{};`}))}
+  name:'test-local-storage',setup(b){b.onResolve({filter:/^\.\/storage$/},()=>({path:'storage',namespace:'fixture'}));b.onLoad({filter:/.*/,namespace:'fixture'},()=>({contents:`export const loadWorkspace=async()=>({settings:{}}), saveWorkspace=async()=>true,read=async()=>[],log=async()=>{},accountId=()=>undefined;`}))}
 }]})).outputFiles[0].text;
 globalThis.window=new EventTarget();
 const {bridge,clearSessionKeys}=await import('data:text/javascript;base64,'+Buffer.from(bridgeCode).toString('base64'));
@@ -64,4 +64,24 @@ test('Browser provider keys are cleared when the session ends',async()=>{
   const original=globalThis.fetch;const captured=[];
   globalThis.fetch=async(_url,options)=>{captured.push(JSON.parse(options.body).credentials);return Response.json({})};
   try{await bridge.setCredential('oathnet','synthetic-key');await bridge.credentials();clearSessionKeys();await bridge.credentials();assert.equal(captured[0].oathnet,'synthetic-key');assert.deepEqual(captured[1],{})}finally{globalThis.fetch=original}
+});
+test('HTML export creates a protected link and waits for the creation dialog to finish',async()=>{
+  const original=globalThis.fetch;let received,creation;
+  const shown=new Promise(resolve=>{creation=resolve});
+  const onCreated=event=>creation(event.detail);window.addEventListener('h3x-report-created',onCreated);
+  globalThis.fetch=async(url,options)=>{assert.equal(url,'/api/reports');received=JSON.parse(options.body);return Response.json({id:'00000000-0000-4000-8000-000000000001',code:'0007',url:'https://h3x.example/reports/00000000-0000-4000-8000-000000000001',active:false})};
+  try{
+    const record={id:'fixture-case',title:'Synthetic report',people:[]};let finished=false;
+    const exporting=bridge.exportCase({record,excluded:['password'],format:'html'}).then(result=>{finished=true;return result});
+    const dialog=await shown;assert.equal(dialog.report.code,'0007');assert.equal(finished,false);assert.deepEqual(received.record,record);assert.equal(received.credentials,undefined);
+    await assert.rejects(()=>bridge.exportCase({record,format:'html'}),/Finish the current report/);
+    dialog.finish(true);assert.equal(await exporting,true);
+  }finally{window.removeEventListener('h3x-report-created',onCreated);globalThis.fetch=original}
+});
+test('Leaving the workspace cancels an unfinished sharing dialog',async()=>{
+  const original=globalThis.fetch;let resolveShown;
+  const shown=new Promise(resolve=>resolveShown=resolve),onCreated=event=>resolveShown(event.detail);
+  window.addEventListener('h3x-report-created',onCreated);
+  globalThis.fetch=async()=>Response.json({id:'00000000-0000-4000-8000-000000000002',code:'1234',url:'https://h3x.example/reports/00000000-0000-4000-8000-000000000002',active:false});
+  try{const exporting=bridge.exportCase({record:{title:'Fixture',people:[]},format:'html'});await shown;clearSessionKeys();assert.equal(await exporting,false)}finally{window.removeEventListener('h3x-report-created',onCreated);globalThis.fetch=original}
 });

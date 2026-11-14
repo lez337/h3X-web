@@ -4,8 +4,9 @@ import {readFile,stat} from 'node:fs/promises';
 import path from 'node:path';
 import {Readable} from 'node:stream';
 import worker from '../dist/server/index.js';
+import {accountEnvironment} from './fixtures/account-session.mjs';
 const root=path.resolve('dist/client');
-const key='local-fixture-only-not-a-production-secret';
+const fixtureEnv=accountEnvironment();
 const types={'.html':'text/html','.js':'text/javascript','.css':'text/css','.png':'image/png','.svg':'image/svg+xml','.json':'application/json'};
 const assets={async fetch(request){
   const pathname=decodeURIComponent(new URL(request.url).pathname);let file=path.resolve(root,'.'+pathname);
@@ -22,7 +23,7 @@ http.createServer(async(req,res)=>{
   try{
     const parts=[];for await(const part of req)parts.push(part);
     const request=new Request('http://127.0.0.1:8787'+req.url,{method:req.method,headers:req.headers,...parts.length?{body:Buffer.concat(parts)}:{},signal:abort.signal});
-    const response=await worker.fetch(request,{H3X_ACCESS_KEY:key,ASSETS:assets});
+    const response=await worker.fetch(request,{...fixtureEnv,ASSETS:assets});
     res.writeHead(response.status,Object.fromEntries(response.headers));
     if(response.body)Readable.fromWeb(response.body).pipe(res);else res.end();
   }catch(error){res.writeHead(500,{'Content-Type':'text/plain'});res.end(error.message)}

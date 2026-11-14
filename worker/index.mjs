@@ -1,4 +1,3 @@
-import {timingSafeEqual,createHash} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
 import providers from '../electron/providers.cjs';
 import freeProviders from '../electron/free-providers.cjs';
@@ -8,39 +7,27 @@ import query from '../electron/search-query.cjs';
 import deep from '../electron/people-deep.cjs';
 import geo from '../electron/geocoding.cjs';
 import {getCatalog,selection,checkBatch} from './username.mjs';
+import {createHostedReport,reportRoute,forwardReport} from './reports.mjs';
+export {InvestigationReport} from './reports.mjs';
+import {accountAuth,resolveAccount,accountWorkspace} from './accounts.mjs';
+export {H3xAccount} from './accounts.mjs';
 
 const encoder=new TextEncoder();
-const cookieName='h3x_session';
 const credentials=['oathnet',...freeProviders.catalog.filter(p=>p.credential).map(p=>p.id)];
-const cookieFlags=request=>`; Path=/api; HttpOnly; SameSite=Strict${new URL(request.url).protocol==='https:'?'; Secure':''}`;
 const headers={'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'};
 const json=(value,status=200,extra={})=>Response.json(value,{status,headers:{...headers,...extra}});
-const digest=value=>createHash('sha256').update(value).digest();
-const equal=(a,b)=>timingSafeEqual(digest(a),digest(b));
 function redact(value,keys){
   if(typeof value==='string'){for(const key of Object.values(keys))if(key.length>=4)value=value.split(key).join('[redacted]');return value;}
   if(Array.isArray(value))return value.map(entry=>redact(entry,keys));
   if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).map(([key,entry])=>[key,redact(entry,keys)]));
   return value;
 }
-async function keyFor(secret){return crypto.subtle.importKey('raw',encoder.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign','verify']);}
-const hex=bytes=>[...new Uint8Array(bytes)].map(b=>b.toString(16).padStart(2,'0')).join('');
-export async function sessionToken(secret,expires=Date.now()+8*3600000){
-  return `${expires}.${hex(await crypto.subtle.sign('HMAC',await keyFor(secret),encoder.encode(String(expires))))}`;
-}
-export async function authenticated(request,secret){
-  if(typeof secret!=='string'||secret.length<24)return false;
-  const token=(request.headers.get('cookie')||'').split(';').map(s=>s.trim()).find(s=>s.startsWith(cookieName+'='))?.slice(cookieName.length+1)||'';
-  const [expires,signature]=token.split('.');
-  if(!/^\d{13}$/.test(expires)||!/^([a-f0-9]{64})$/.test(signature)||Number(expires)<Date.now()||Number(expires)>Date.now()+8*3600000+1000)return false;
-  return crypto.subtle.verify('HMAC',await keyFor(secret),Uint8Array.from(signature.match(/../g),h=>parseInt(h,16)),encoder.encode(expires));
-}
 export async function readBody(request,max=1024*1024){
   if(!request.headers.get('content-type')?.startsWith('application/json'))throw Error('JSON content type required.');
-  if(Number(request.headers.get('content-length'))>max)throw Error('Request exceeds 1 MB.');
+  if(Number(request.headers.get('content-length'))>max)throw Error(`Request exceeds ${max/1024/1024} MB.`);
   const reader=request.body?.getReader();if(!reader)throw Error('Request body required.');
   const parts=[];let bytes=0;
-  try{while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.length;if(bytes>max){await reader.cancel();throw Error('Request exceeds 1 MB.')}parts.push(part.value)}}finally{reader.releaseLock()}
+  try{while(true){const part=await reader.read();if(part.done)break;bytes+=part.value.length;if(bytes>max){await reader.cancel();throw Error(`Request exceeds ${max/1024/1024} MB.`)}parts.push(part.value)}}finally{reader.releaseLock()}
   const data=new Uint8Array(bytes);let offset=0;for(const part of parts){data.set(part,offset);offset+=part.length}
   return JSON.parse(new TextDecoder().decode(data));
 }
@@ -91,16 +78,30 @@ export default {
       const origin=request.headers.get('origin');
       if(origin&&origin!==new URL(request.url).origin)return json({error:'Origin rejected.'},403);
       if(request.headers.get('sec-fetch-site')==='cross-site')return json({error:'Origin rejected.'},403);
-      if(!env.H3X_ACCESS_KEY||env.H3X_ACCESS_KEY.length<24)return json({error:'Set the H3X_ACCESS_KEY Worker secret to at least 24 characters before using the API.',configured:false},503);
-      if(path==='/api/session'&&request.method==='GET')return json({authenticated:await authenticated(request,env.H3X_ACCESS_KEY),configured:true});
-      if(request.method!=='POST')return json({error:'Method not allowed.'},405,{'Allow':'POST'});
-      if(path==='/api/login'){
-        const body=await readBody(request,4096);
-        if(typeof body.key!=='string'||body.key.length>1024||!equal(body.key,env.H3X_ACCESS_KEY))return json({error:'Incorrect access key.'},401);
-        return json({authenticated:true},200,{'Set-Cookie':`${cookieName}=${await sessionToken(env.H3X_ACCESS_KEY)}; Max-Age=28800${cookieFlags(request)}`});
+      const shared=reportRoute(path);
+      if(shared&&['content','access'].includes(shared.action)){
+        if(request.method!=='GET')return json({error:'Method not allowed.'},405,{'Allow':'GET'});
+        return await forwardReport(request,env,shared);
       }
-      if(!await authenticated(request,env.H3X_ACCESS_KEY))return json({error:'Sign in to use H3X.'},401);
-      if(path==='/api/logout')return json({ok:true},200,{'Set-Cookie':`${cookieName}=; Max-Age=0${cookieFlags(request)}`});
+      if(shared&&['unlock','lock'].includes(shared.action)){
+        if(request.method!=='POST')return json({error:'Method not allowed.'},405,{'Allow':'POST'});
+        return await forwardReport(request,env,shared,await readBody(request,1024));
+      }
+      if(path==='/api/session'&&request.method==='GET')return await accountAuth(request,env,path);
+      if(['/api/accounts','/api/login','/api/logout'].includes(path)){
+        if(request.method!=='POST')return json({error:'Method not allowed.'},405,{'Allow':'POST'});
+        return await accountAuth(request,env,path,path==='/api/logout'?{}:await readBody(request,4096));
+      }
+      const account=await resolveAccount(request,env);
+      if(!account)return json({error:'Sign in to use H3X.'},401);
+      if(request.headers.has('X-H3X-Account')&&request.headers.get('X-H3X-Account')!==account.id)return json({error:'The signed-in account changed in another tab. Sign in again.'},401);
+      if(path==='/api/workspace'){
+        if(!['GET','POST'].includes(request.method))return json({error:'Method not allowed.'},405,{'Allow':'GET, POST'});
+        return await accountWorkspace(request,env,account,request.method==='POST'?await readBody(request,8*1024*1024+4096):undefined);
+      }
+      if(request.method!=='POST')return json({error:'Method not allowed.'},405,{'Allow':'POST'});
+      if(path==='/api/reports')return await createHostedReport(await readBody(request,8*1024*1024),env,new URL(request.url).origin,account.id);
+      if(shared&&['activate','discard'].includes(shared.action))return await forwardReport(request,env,shared,await readBody(request,1024),account.id);
       if(path!=='/api/rpc')return json({error:'API route not found.'},404);
       const payload=await readBody(request),keys=userKeys(payload,env),p=payload.payload||{};
       switch(payload.action){

@@ -1,19 +1,20 @@
-import {investigation,exporter} from './shared.js';
-import {loadWorkspace,saveWorkspace,read,log} from './storage';
+import {investigation} from './shared.js';
+import {loadWorkspace,saveWorkspace,read,log,accountId} from './storage';
 import {download,pickFiles} from './files';
+import {presentHostedReport,cancelHostedReportDialog} from './share-events';
 type Listener=(value:any)=>void;
 const listeners={username:new Set<Listener>(),deep:new Set<Listener>(),file:new Set<Listener>()};
 const subscribe=(kind:keyof typeof listeners,callback:Listener)=>{listeners[kind].add(callback);return()=>{listeners[kind].delete(callback)}};
 const emit=(kind:keyof typeof listeners,value:any)=>listeners[kind].forEach(callback=>callback(value));
 let keys:Record<string,string>={};
 const runs=new Map<string,AbortController>();
-export function clearSessionKeys(){keys={};for(const controller of runs.values())controller.abort();usernameController?.abort();fileWorker?.terminate();fileWorker=undefined;fileResolve?.({canceled:true});fileResolve=undefined;}
+export function clearSessionKeys(){keys={};cancelHostedReportDialog();for(const controller of runs.values())controller.abort();usernameController?.abort();fileWorker?.terminate();fileWorker=undefined;fileResolve?.({canceled:true});fileResolve=undefined;}
 export async function requestJson(path:string,body?:any){
-  const response=await fetch(path,{method:body===undefined?'GET':'POST',credentials:'same-origin',headers:body===undefined?{}:{'Content-Type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)});
+  const response=await fetch(path,{method:body===undefined?'GET':'POST',credentials:'same-origin',headers:{...(body===undefined?{}:{'Content-Type':'application/json'}),...(accountId()?{'X-H3X-Account':accountId()!}:{})},body:body===undefined?undefined:JSON.stringify(body)});
   const value=await response.json();if(!response.ok){if(response.status===401&&path!=='/api/login')window.dispatchEvent(new Event('h3x-auth-required'));throw Error(value.error||'Request failed.')}return value;
 }
 async function rpc(action:string,payload:any={},signal?:AbortSignal,onEvent?:(type:string,data:any)=>void){
-  const response=await fetch('/api/rpc',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,payload,credentials:keys}),signal});
+  const response=await fetch('/api/rpc',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',...(accountId()?{'X-H3X-Account':accountId()!}:{})},body:JSON.stringify({action,payload,credentials:keys}),signal});
   if(!response.ok){const error=await response.json();if(response.status===401)window.dispatchEvent(new Event('h3x-auth-required'));throw Error(error.error||'Request failed.')}
   if(!response.headers.get('content-type')?.includes('ndjson'))return response.json();
   const reader=response.body!.getReader(),decoder=new TextDecoder();let buffer='',result:any,received=false;
@@ -102,6 +103,7 @@ async function deepSearch(p:any){
   return {items:[...items.values()].slice(0,5000),completed,total:p.plan.tasks.length,canceled:controller.signal.aborted,warnings,limited};
 }
 const desktop=async()=>{throw Error('This integration requires the Windows desktop application.')};
+let creatingReport=false;
 export const bridge:Window['h3x']={
   load:loadWorkspace,save:saveWorkspace,
   credentials:()=>rpc('credentials'),
@@ -109,7 +111,14 @@ export const bridge:Window['h3x']={
   logs:async()=>await read('logs')||[],exportLogs:async()=>download((await read('logs')||[]).map((entry:any)=>JSON.stringify(entry)).join('\n'),'H3X-activity.jsonl'),
   prepareEvidence:async p=>investigation.prepare(p.fields,p.excluded,p.current),
   importCase:async({excluded}={})=>{const [file]=await pickFiles('.txt,.json');if(!file)return null;if(file.size>8*1024*1024)throw Error('Import exceeds 8 MB.');const text=(await file.text()).replace(/^\uFEFF/,'');if(file.name.toLowerCase().endsWith('.json')){const value=JSON.parse(text);return Array.isArray(value.people)?{record:value}:{fields:investigation.clean(value,excluded)}}return investigation.parseText(text,excluded)},
-  exportCase:async({record,excluded,format='txt'})=>{const state=await loadWorkspace();return download(format==='html'?exporter.htmlReport(record,excluded,state.settings):investigation.textReport(record,excluded,state.settings),`H3X-${String(record.title||'case').replace(/[^a-z0-9_-]/gi,'_').slice(0,40)}.${format}`,format==='html'?'text/html;charset=utf-8':'text/plain;charset=utf-8')},
+  exportCase:async({record,excluded,format='txt'})=>{
+    const state=await loadWorkspace();
+    if(format==='html'){
+      if(creatingReport)throw Error('Finish the current report link before creating another.');creatingReport=true;
+      try{const report=await requestJson('/api/reports',{record,excluded,settings:{hiddenFields:state.settings.hiddenFields,txtHeaderArt:state.settings.txtHeaderArt,txtFooterArt:state.settings.txtFooterArt}});return await presentHostedReport(report)}finally{creatingReport=false}
+    }
+    return download(investigation.textReport(record,excluded,state.settings),`H3X-${String(record.title||'case').replace(/[^a-z0-9_-]/gi,'_').slice(0,40)}.txt`);
+  },
   exportSearch:async({items})=>{const state=await loadWorkspace(),excluded=[...(state.settings.excludedFields||investigation.defaults),...(state.settings.hiddenFields||[])];return download(investigation.decorateText(items.map((item:any)=>[item.source||'Result',...Object.entries(investigation.clean(item.fields,excluded)).map(([key,value])=>`${key} : ${typeof value==='object'?JSON.stringify(value):value}`)].join('\n')).join('\n\n'),state.settings),'H3X-results.txt')},
   openExports:async()=>{throw Error('Web exports are saved to your browser’s Downloads folder.')},
   inspectQuery:(query,type='auto')=>rpc('inspectQuery',{query,type}),providerMatches:query=>rpc('providerMatches',{query}),
