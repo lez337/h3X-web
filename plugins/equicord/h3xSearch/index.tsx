@@ -34,7 +34,7 @@ function SearchModal({user, ...props}: ModalProps & {user: User}) {
             {!result && !error && <p role="status">Searching ID and username…</p>}
             {error && <div role="alert"><p>{error}</p><button onClick={() => setAttempt(attempt + 1)}>Retry</button></div>}
             {result && <><p>{result.notice}</p><p>{result.items.length} cards found</p>
-                {!result.items.length && <p>{result.providerStatus.every(p => p.status === 'error') ? 'Search unavailable. Providers failed; try again later.' : 'No matches found in the completed searches.'}</p>}
+                {!result.items.length && <p>{result.providerStatus.every(p => p.status !== 'complete') ? 'Search unavailable. Check provider configuration or try again later.' : 'No matches found in the completed searches.'}</p>}
                 {result.providerStatus.map(p => <p key={p.source}>{p.source}: {p.status} ({p.count})</p>)}
                 {result.items.map(item => <article key={item.id} style={{background: 'var(--background-secondary)', border: '1px solid var(--background-modifier-accent)', borderRadius: 12, padding: 16, margin: '12px 0'}}>
                     <h3>{item.source}</h3><small>{item.matchNote}</small>

@@ -11,7 +11,15 @@ The native helper supports `*.workers.dev`. For a custom domain, add its exact h
 
 Keys are stored in Equicord's local plugin settings; treat settings exports as sensitive. H3X stores only the key hash. **Replace API key** disables the previous key; **Revoke API key** disables access immediately. The key cannot read or edit your investigations, manage reports, or sign into your account. Signing out does not revoke the integration key.
 
-The API checks BrixHub by exact search fields `discord_id` and `nom_utilisateur`. When `OATHNET_API_KEY` is configured as a Worker secret, it also fetches the Discord profile. Browser-only provider keys are not used by this integration. Results contain the first provider page (20 rows per BrixHub query), with duplicate cards removed and sensitive credential fields redacted. It does not search saved investigations or perform exhaustive pagination. Username matches may be unrelated people; verify them. Provider failures appear separately from no matches.
+The API checks BrixHub by exact search fields `discord_id` and `nom_utilisateur`. It also searches OathNet's breach and stealer datasets for both the selected Discord ID and username, plus the OathNet Discord profile lookup. Configure `OATHNET_API_KEY` as a Worker secret to enable these five OathNet calls. Without it, the popup explicitly reports that OathNet was skipped. Browser-only provider keys are not used by this integration. Results contain the first provider page (20 rows per search), with duplicate cards removed and sensitive credential fields redacted. It does not search saved investigations or perform exhaustive pagination. Username matches may be unrelated people; verify them. Provider failures appear separately from no matches.
+
+To configure OathNet, run this in the H3X project and paste your OathNet provider key when prompted (not your H3X integration key):
+
+```powershell
+npx wrangler@4 secret put OATHNET_API_KEY
+```
+
+Redeploy the updated Worker. Existing plugin installations will receive the added OathNet cards from the API without changing their H3X API key. OathNet calls use the server's configured provider subscription and its limits.
 
 There is no H3X request quota or expiry for this key. Cloudflare service quotas, costs and upstream provider restrictions still apply; this does not grant unlimited third-party API calls.
 

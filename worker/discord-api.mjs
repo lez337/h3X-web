@@ -10,13 +10,17 @@ export function discordIdentity(body){
 }
 export async function lookupDiscord(identity,env,signal,lookup=async task=>{
   if(task.kind==='profile')return profiles.searchProfile({profileKind:'discord',parameter:'discord_id',query:identity.userId,signal},env.OATHNET_API_KEY);
+  if(task.provider==='oathnet')return providers.searchOath({query:task.query,settings:{oathFamily:task.family,pageSize:20},signal},env.OATHNET_API_KEY);
   return providers.searchBrix({query:task.query,terms:{[task.field]:task.query},settings:{pageSize:20,redaction:true},signal});
 }){
   const tasks=[{kind:'id',query:identity.userId,field:'discord_id'},{kind:'username',query:identity.username,field:'nom_utilisateur'}];
-  if(env.OATHNET_API_KEY)tasks.push({kind:'profile'});
+  if(env.OATHNET_API_KEY){
+    for(const family of ['breach','stealer'])for(const [kind,value] of [['id',identity.userId],['username',identity.username]])tasks.push({provider:'oathnet',kind,query:value,family});
+    tasks.push({kind:'profile'});
+  }
   const outcomes=await Promise.allSettled(tasks.map(lookup)),items=[],seen=new Set(),providerStatus=[];
   outcomes.forEach((result,index)=>{
-    const task=tasks[index],source=task.kind==='profile'?'OathNet Discord':'BrixHub '+task.kind;
+    const task=tasks[index],source=task.kind==='profile'?'OathNet Discord':task.provider==='oathnet'?`OathNet ${task.family} ${task.kind}`:'BrixHub '+task.kind;
     providerStatus.push({source,status:result.status==='fulfilled'?'complete':'error',count:result.status==='fulfilled'?result.value.items.length:0});
     if(result.status==='fulfilled')for(const item of result.value.items){
       const fields=providers.mask(item.fields),signature=JSON.stringify([item.source,fields]);
@@ -24,7 +28,11 @@ export async function lookupDiscord(identity,env,signal,lookup=async task=>{
       items.push({...item,id:'discord-'+items.length,fields,matchedBy:task.kind,matchNote:task.kind==='username'?'Username match; verify identity before drawing conclusions.':'ID lookup result'});
     }
   });
-  return {...identity,items,providerStatus,notice:providerStatus.some(p=>p.status==='error')?'Some providers failed. Results may be incomplete.':'Username matches can refer to different people.',quota:'No H3X call quota. Hosting and upstream limits apply.'};
+  if(!env.OATHNET_API_KEY)providerStatus.push({source:'OathNet',status:'skipped',count:0,message:'Configure the OATHNET_API_KEY Worker secret to enable OathNet searches.'});
+  const notices=['Username matches can refer to different people.'];
+  if(providerStatus.some(p=>p.status==='error'))notices.push('Some providers failed. Results may be incomplete.');
+  if(!env.OATHNET_API_KEY)notices.push('OathNet was not searched: configure the OATHNET_API_KEY Worker secret.');
+  return {...identity,items,providerStatus,notice:notices.join(' '),quota:'No H3X call quota. Hosting and upstream limits apply.'};
 }
 export async function discordApi(request,env,readBody){
   if(request.method!=='POST')return json({error:'Method not allowed.'},405);
