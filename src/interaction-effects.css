@@ -1,0 +1,55 @@
+/* Silver light follows the pointer without changing layout or React state. */
+.search-box {
+  position: relative;
+  isolation: isolate;
+  transition: border-color .25s ease, box-shadow .3s ease;
+}
+.search-box > * { position: relative; z-index: 1; }
+.search-box::before,
+.search-box::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s ease;
+}
+.search-box::before {
+  background: radial-gradient(340px circle at var(--search-light-x, 50%) var(--search-light-y, 0%), #ffffff12, transparent 75%);
+}
+.search-box::after {
+  inset: -1px;
+  padding: 1px;
+  background: radial-gradient(230px circle at var(--search-light-x, 50%) var(--search-light-y, 0%), #ffffffa0, #ffffff08 80%);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+}
+.search-box:focus-within {
+  border-color: #777;
+  box-shadow: inset 0 1px #ffffff12, 0 0 0 3px #ffffff05, 0 8px 36px #ffffff07;
+}
+.search-box:focus-within::before { opacity: .55; }
+.search-box button {
+  transition: transform .18s ease, background .2s ease, border-color .2s ease, box-shadow .25s ease;
+}
+.search-box button:not(:disabled):active { transform: scale(.97); }
+.provider-settings-trigger svg { transition: transform .35s ease; }
+.search-history-row { transition: background .2s ease, border-color .2s ease; }
+
+@media (hover: hover) and (pointer: fine) {
+  .search-box:hover { border-color: #626262; box-shadow: inset 0 1px #ffffff12, 0 8px 40px #ffffff08; }
+  .search-box:hover::before, .search-box:hover::after { opacity: 1; }
+  .search-box button:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 4px 16px #ffffff0d; }
+  .search-box .primary:not(:disabled):hover { box-shadow: 0 0 22px #ffffff2a; }
+  .search-box .provider-settings-trigger:hover svg { transform: rotate(35deg); }
+  .search-history-row:hover { background: #1a1a1a; border-color: #494949; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-box, .search-box::before, .search-box::after,
+  .search-box button, .provider-settings-trigger svg, .search-history-row { transition: none; }
+  .search-box::before, .search-box::after { display: none; }
+  .search-box button:not(:disabled):hover, .search-box button:not(:disabled):active,
+  .search-box .provider-settings-trigger:hover svg { transform: none; }
+}

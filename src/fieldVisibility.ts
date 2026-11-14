@@ -1,0 +1,3 @@
+const normalize=(key:string)=>key.replace(/([a-z])([A-Z])/g,'$1_$2').toLowerCase().replace(/[ .-]+/g,'_');
+export function hiddenField(key:string,patterns:string[]=[]):boolean{return patterns.some(pattern=>new RegExp('^'+normalize(pattern).split('*').map(part=>[...part].map(c=>'\\^$.*+?()[]{}|'.includes(c)?'\\'+c:c).join('')).join('.*')+'$','i').test(normalize(key)))}
+export function visibleFields(value:any,patterns:string[]=[]):any{if(Array.isArray(value))return value.map(v=>visibleFields(v,patterns));if(value&&typeof value==='object')return Object.fromEntries(Object.entries(value).filter(([key])=>!hiddenField(key,patterns)).map(([key,v])=>[key,visibleFields(v,patterns)]));return value}

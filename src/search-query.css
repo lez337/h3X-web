@@ -1,0 +1,15 @@
+.search-type-selector{margin-right:auto;min-width:0;max-width:55%;display:grid;gap:5px}.search-type-selector select{width:100%;max-width:260px;padding:9px 12px;font-size:12px}.query-detection.error{font-size:11px;color:#e3ad96;overflow-wrap:anywhere}.search-query-controls{width:100%;max-width:900px;margin:15px auto 0;text-align:left;min-width:0}.query-type-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap}.query-type-row button{font-size:11px;padding:8px 10px}.active-search-filters{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.active-search-filters span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:#aaa;background:#141414;border:1px solid #303030;border-radius:5px;padding:5px 8px}
+
+.search-command-help{max-width:900px;margin:10px auto 0;text-align:left;color:#aaa;font-size:12px;min-width:0}
+.search-command-help p{line-height:1.5;margin:7px 0}.search-command-help small{font-size:11px;line-height:1.5}
+.search-command-suggestions{background:#0d0d0d;border:1px solid #2b2b2b;border-radius:13px;padding:8px;box-shadow:0 12px 32px #0005, inset 0 1px #ffffff08;margin-bottom:10px}
+.search-command-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:7px 10px 11px;color:#919191;font:500 10px 'JetBrains Mono',monospace;letter-spacing:.08em}.search-command-heading small{font-weight:400;letter-spacing:0;font-size:10px}
+.search-command-rows{max-height:276px;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.search-command-rows button{display:flex;align-items:center;gap:12px;width:100%;min-width:0;text-align:left;padding:10px;border:1px solid transparent;background:transparent;box-shadow:none;border-radius:8px;color:#d7d7d7}
+.search-command-rows button.command-selected,.search-command-rows button:hover{background:#202020;border-color:#383838;color:#fff}
+.search-command-icon{display:grid;place-items:center;flex:0 0 30px;height:30px;border:1px solid #333;border-radius:7px;background:#1b1b1b;color:#b6b6b6;font-size:21px;font-weight:500}
+.search-command-rows b{font-size:13px;font-weight:600;flex:0 0 150px;overflow-wrap:anywhere}.search-command-rows small{color:#949494;flex:1;min-width:0;overflow-wrap:anywhere}
+.search-command-enter{color:#919191;opacity:0}.command-selected .search-command-enter{opacity:1}
+@media(max-width:600px){.search-command-heading small{display:none}.search-command-rows button{gap:8px}.search-command-rows b{flex-basis:105px;font-size:12px}.search-command-rows small{font-size:10px}.search-command-enter{display:none}}
+
+.search-command-help kbd{font:10px 'JetBrains Mono',monospace;border:1px solid #3f3f3f;background:#151515;border-radius:4px;padding:3px 5px;color:#aaa}.search-command-heading small{display:flex;align-items:center;gap:7px}.search-command-rows button:focus-visible{outline:1px solid #aaa;outline-offset:-2px}

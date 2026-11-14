@@ -1,0 +1,35 @@
+{
+  "name": "h3x-v2-web",
+  "version": "0.2.9",
+  "private": true,
+  "type": "module",
+  "description": "H3X v2 browser workspace and Cloudflare Worker",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "prepare:shared": "node scripts/prepare-shared.mjs",
+    "dev": "npm run prepare:shared && vite",
+    "dev:worker": "npx wrangler@4 dev --port 8787",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run prepare:shared && npm run typecheck && vite build && node scripts/build-worker.mjs",
+    "test": "npm run prepare:shared && node scripts/build-worker.mjs && node --test electron/*.test.cjs tests/*.test.mjs",
+    "preview": "npx wrangler@4 dev --port 8787",
+    "deploy": "npm run build && npx wrangler@4 deploy",
+    "deploy:check": "npm run build && npx wrangler@4 deploy --dry-run"
+  },
+  "dependencies": {
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.468.0",
+    "maplibre-gl": "^6.18.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.7.0",
+    "esbuild": "^0.25.12",
+    "typescript": "^5.8.0",
+    "vite": "^6.2.0"
+  }
+}

@@ -1,0 +1,4 @@
+# Copy to .dev.vars for local development. Use a long, unique random value.
+H3X_ACCESS_KEY=replace-with-at-least-24-random-characters
+# Optional server-side fallback; browser Settings can supply session-only keys.
+# OATHNET_API_KEY=
