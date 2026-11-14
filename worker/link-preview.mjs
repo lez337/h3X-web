@@ -8,7 +8,7 @@ export async function withLinkPreview(request,response){
   if(!['GET','HEAD'].includes(request.method)||(url.pathname!=='/'&&!report)||!response.ok||!response.headers.get('content-type')?.includes('text/html'))return response;
   const title=report?'H3X — Shared Investigation':'H3X — Investigation Workspace';
   const description=report?'Open this shared investigation in H3X. Protected investigations require an access code.':'Organize evidence, connect findings, and share investigations with H3X.';
-  const canonical=escape(url.origin+url.pathname),image=escape(new URL('/icon.png',url.origin).href);
+  const canonical=escape(url.origin+url.pathname),image=escape(new URL('/icon.png?v=2',url.origin).href);
   const tags=`<title>${title}</title>
   <meta name="description" content="${description}">
   <meta property="og:type" content="website">
@@ -28,7 +28,7 @@ export async function withLinkPreview(request,response){
   <meta name="twitter:image:alt" content="H3X logo">
   <link rel="canonical" href="${canonical}">
   ${report?'<meta name="robots" content="noindex, nofollow, noarchive">':''}`;
-  const html=(await response.text()).replace(/<title>[\s\S]*?<\/title>/i,'').replace(/<meta\s+name="description"[^>]*>/i,'').replace('</head>',tags+'\n</head>');
+  const html=(await response.text()).replace(/<!-- h3x-preview:start -->[\s\S]*?<!-- h3x-preview:end -->/i,'').replace(/<title>[\s\S]*?<\/title>/i,'').replace(/<meta\s+name="description"[^>]*>/i,'').replace('</head>',tags+'\n</head>');
   const headers=new Headers(response.headers);
   for(const name of ['Content-Length','Content-Encoding','ETag','Last-Modified'])headers.delete(name);
   headers.set('Cache-Control','no-store');

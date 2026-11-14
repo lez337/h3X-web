@@ -1,4 +1,6 @@
 body{min-width:320px}
+/* Native selection controls must not inherit text-field padding on Safari. */
+input[type=checkbox],input[type=radio]{padding:0;flex-shrink:0}
 :where(button){display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #3c3c3c;border-radius:8px;background:#1b1b1b;color:#eaeaea;padding:10px 15px;font-size:12px;transition:background .15s,border-color .15s,color .15s}
 :where(button):hover:not(:disabled){background:#252525;border-color:#606060}
 :where(button):focus-visible{outline:2px solid #c5c5c5;outline-offset:3px}
@@ -37,6 +39,7 @@ body{min-width:320px}
   .web-account-trigger{width:min(100%,260px)}
   .web-account-error{bottom:calc(96px + env(safe-area-inset-bottom,0px));max-height:40dvh;overflow:auto}
   .results-layout{grid-template-columns:minmax(0,1fr);gap:22px}
+  .result-sidebar{position:static;top:auto}
   .result-sidebar,.dataset-results,.dataset-section,.result-fields{min-width:0;width:100%}
   .result-grid{grid-template-columns:minmax(0,1fr)}
   .dataset-heading{flex-wrap:wrap;min-width:0}

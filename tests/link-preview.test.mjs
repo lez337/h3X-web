@@ -11,10 +11,12 @@ test('Home links expose a logo and complete preview metadata without JavaScript'
   const response=await worker.fetch(new Request('https://h3x.example/'),{ASSETS:assets});
   const html=await response.text();
   assert.match(html,/<meta property="og:title" content="H3X — Investigation Workspace">/);
-  assert.match(html,/<meta property="og:image" content="https:\/\/h3x.example\/icon.png">/);
+  assert.match(html,/<meta property="og:image" content="https:\/\/h3x.example\/icon.png\?v=2">/);
   assert.match(html,/<meta name="twitter:card" content="summary">/);
   assert.equal((html.match(/<title>/g)||[]).length,1);
   assert.equal((html.match(/<meta name="description"/g)||[]).length,1);
+  assert.equal((html.match(/property="og:image" /g)||[]).length,1);
+  assert.ok(!html.includes('h3x-project.workers.dev'));
   assert.ok(html.includes('<script type="module" src="/src/main.tsx"></script>'));
   assert.equal(response.headers.get('content-security-policy'),"frame-ancestors 'none'");
   assert.equal(response.headers.get('content-length'),null);
@@ -27,10 +29,17 @@ test('Report previews stay generic, omit query secrets, and never read report st
   assert.match(html,/H3X — Shared Investigation/);
   assert.match(html,/Protected investigations require an access code/);
   assert.ok(html.includes(`property="og:url" content="https://custom.example/reports/${id}"`));
-  assert.ok(html.includes('content="https://custom.example/icon.png"'));
+  assert.ok(html.includes('content="https://custom.example/icon.png?v=2"'));
   assert.doesNotMatch(html,/9876|private-session/);
   assert.equal(response.headers.get('x-robots-tag'),'noindex, nofollow, noarchive');
   assert.equal(response.headers.get('cache-control'),'no-store');
+});
+
+test('Static HTML includes preview metadata when served directly by Cloudflare assets',()=>{
+  assert.match(shell,/<meta property="og:title" content="H3X - Investigation Workspace">/);
+  assert.match(shell,/<meta property="og:image" content="https:\/\/h3x-web.h3x-project.workers.dev\/icon.png\?v=2">/);
+  assert.match(shell,/<meta name="twitter:card" content="summary">/);
+  assert.doesNotMatch(shell,/H3X v2 Web|H3X v2 investigation workspace for the web/);
 });
 
 test('Image and unrelated page responses remain untouched',async()=>{
