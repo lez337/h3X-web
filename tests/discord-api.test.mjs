@@ -36,6 +36,27 @@ test('Discord identity validation preserves snowflake precision and rejects malf
   assert.deepEqual(discordIdentity(identity),identity);
   for(const value of [{...identity,userId:123456789012345678},{...identity,userId:'1'},{...identity,username:'x\n'},{...identity,username:'a'.repeat(33)},null])assert.throws(()=>discordIdentity(value));
 });
+test('Optional connected names are bounded, normalized and deduplicated',()=>{
+  assert.deepEqual(discordIdentity({...identity,connectedUsernames:[' linked.name ','LINKED.NAME',identity.username]}).connectedUsernames,['LINKED.NAME']);
+  for(const connectedUsernames of ['name',[null],[''],['x\n'],['x'.repeat(101)],Array(11).fill('name')])assert.throws(()=>discordIdentity({...identity,connectedUsernames}));
+  assert.deepEqual(discordIdentity({...identity,connectedUsernames:[]}).connectedUsernames,[]);
+});
+test('Selected connected names search BrixHub and both OathNet datasets with bounded concurrency',async()=>{
+  const tasks=[];let active=0,maxActive=0;
+  const result=await lookupDiscord({...identity,connectedUsernames:['linked.name','other.name']},{OATHNET_API_KEY:'synthetic'},new AbortController().signal,async task=>{
+    active++;maxActive=Math.max(active,maxActive);tasks.push(task);
+    await new Promise(resolve=>setTimeout(resolve,1));active--;
+    return {items:task.kind==='connected'?[{source:task.provider||'brixhub',fields:{username:task.query}}]:[]};
+  });
+  assert.equal(tasks.length,13);assert.ok(maxActive<=4);
+  for(const name of ['linked.name','other.name']){
+    const matches=tasks.filter(task=>task.kind==='connected'&&task.query===name);
+    assert.equal(matches.length,3);
+    assert.equal(matches[0].field,'nom_utilisateur');
+    assert.deepEqual(matches.filter(task=>task.provider==='oathnet').map(task=>task.family),['breach','stealer']);
+  }
+  assert.ok(result.items.every(item=>item.matchedBy==='connected'&&item.matchNote.includes(item.matchedQuery)));
+});
 test('Worker bearer endpoint returns live-adapter cards for both exact fields without exposing credentials',async()=>{
   const env=accountEnvironment();
   const {key}=await (await call(env,'/api/account/api-key',{action:'create'},{Cookie:fixtureCookie})).json();

@@ -2,17 +2,18 @@ import type {IpcMainInvokeEvent} from 'electron';
 
 // Add your own H3X custom domain here if you do not use workers.dev.
 const CUSTOM_HOSTS: string[] = [];
-export async function search(_event: IpcMainInvokeEvent, site: string, key: string, userId: string, username: string) {
+export async function search(_event: IpcMainInvokeEvent, site: string, key: string, userId: string, username: string, connectedUsernames: string[] = []) {
     const url = new URL(site);
     if (url.protocol !== 'https:' || url.username || url.password || url.port ||
         !(url.hostname.endsWith('.workers.dev') || CUSTOM_HOSTS.includes(url.hostname)))
         throw new Error('Use your HTTPS workers.dev URL, or add your H3X domain to CUSTOM_HOSTS in native.ts.');
     if (!/^h3x_[a-f0-9]{64}_[a-f0-9]{64}$/.test(key)) throw new Error('Set your H3X account API key in plugin settings.');
     if (!/^\d{14,20}$/.test(userId) || typeof username !== 'string' || !/^\S{2,32}$/.test(username)) throw new Error('Invalid Discord user.');
+    if (!Array.isArray(connectedUsernames) || connectedUsernames.length > 10 || connectedUsernames.some(name => typeof name !== 'string' || !name.trim() || name.length > 100 || /[\x00-\x1f\x7f]/.test(name))) throw new Error('Invalid connected account names.');
     const response = await fetch(new URL('/api/v1/discord/search', url.origin), {
-        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(50000),
+        method: 'POST', redirect: 'error', signal: AbortSignal.timeout(connectedUsernames.length ? 245000 : 50000),
         headers: {'Content-Type': 'application/json', Authorization: `Bearer ${key}`},
-        body: JSON.stringify({userId, username})
+        body: JSON.stringify({userId, username, connectedUsernames})
     });
     // Bound data returned over IPC, including HTML error pages from a wrong server URL.
     const reader = response.body?.getReader();
